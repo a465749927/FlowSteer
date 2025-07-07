@@ -4,6 +4,8 @@ FlowSteer is a minimal SD-WAN L4 proxy written in Go. It demonstrates basic TCP
 and UDP forwarding with simple load balancing. The proxy exposes a small
 management API to update backends and forwarding rules at runtime.
 
+See [docs/PROCESS.md](docs/PROCESS.md) for an overview of how the proxy processes connections.
+
 ## Features
 
 - Round-robin balancing across multiple TCP backends.
