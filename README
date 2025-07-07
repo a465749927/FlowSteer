@@ -1,1 +1,17 @@
-FlowSteer
+# FlowSteer
+
+This is a simple TCP proxy example used for demonstration.
+
+## Usage
+
+```
+go run ./cmd/proxy -backend 127.0.0.1:9000 -listen :8080
+```
+
+### Flags
+
+- `-backend` — address of the backend to forward connections to.
+- `-listen` — address to listen for incoming connections.
+- `-proxy-protocol` — when set, a [PROXY protocol](https://www.haproxy.org/download/1.8/doc/proxy-protocol.txt) v1 header is sent to the backend with the client's original IP. This allows chained proxies (proxy1 → proxy2) to see the real client IP.
+
+Backends built with FlowSteer can parse this header using `proxy.ParseProxyHeader`.
