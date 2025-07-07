@@ -28,7 +28,9 @@ This document describes how the proxy handles connections and how the main compo
 
 1. **Direct Mode**
    - If a rule with `Direct` is matched, `directForward` is called.
-   - The connection is opened to the original destination and a PROXY header is sent so downstream proxies know the true five‑tuple.
+   - The connection is opened to the original destination. If the inbound
+     connection used the PROXY protocol, that header is forwarded; otherwise no
+     PROXY header is sent.
    - Data is proxied bidirectionally using `io.Copy`.
 
 2. **Backend Mode**

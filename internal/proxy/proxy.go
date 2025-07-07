@@ -242,12 +242,16 @@ func (p *SimpleProxy) directForward(ci *connInfo) {
 		ci.Close()
 		return
 	}
-	// propagate tuple when direct-forwarding through another proxy
-	if err := sendProxyHeader(backend, ci.srcIP, ci.srcPort, ci.dstIP, ci.dstPort); err != nil {
-		log.Printf("failed to send proxy header: %v", err)
-		ci.Close()
-		backend.Close()
-		return
+	// only propagate the original tuple if this connection arrived from a
+	// previous proxy. Direct connections to the origin should not receive
+	// a PROXY header.
+	if ci.fromProxy {
+		if err := sendProxyHeader(backend, ci.srcIP, ci.srcPort, ci.dstIP, ci.dstPort); err != nil {
+			log.Printf("failed to send proxy header: %v", err)
+			ci.Close()
+			backend.Close()
+			return
+		}
 	}
 	go proxyConn(ci, backend)
 	go proxyConn(backend, ci)
