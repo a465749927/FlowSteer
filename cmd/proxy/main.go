@@ -117,6 +117,7 @@ type ruleReq struct {
 	DstPort int    `json:"dstPort"`
 	Proto   string `json:"proto"`
 	Backend string `json:"backend"`
+	Direct  bool   `json:"direct"`
 }
 
 func parseRule(r ruleReq) (proxy.ForwardRule, error) {
@@ -139,5 +140,6 @@ func parseRule(r ruleReq) (proxy.ForwardRule, error) {
 	fr.DstPort = r.DstPort
 	fr.Proto = r.Proto
 	fr.Backend = r.Backend
+	fr.Direct = r.Direct
 	return fr, nil
 }

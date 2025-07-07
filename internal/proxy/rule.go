@@ -7,12 +7,13 @@ import (
 
 // ForwardRule associates a 5-tuple with a backend address.
 type ForwardRule struct {
-	SrcNet  *net.IPNet
-	DstNet  *net.IPNet
-	SrcPort int
-	DstPort int
-	Proto   string // tcp or udp
-	Backend string
+	SrcNet  *net.IPNet `json:"src,omitempty"`
+	DstNet  *net.IPNet `json:"dst,omitempty"`
+	SrcPort int        `json:"srcPort,omitempty"`
+	DstPort int        `json:"dstPort,omitempty"`
+	Proto   string     `json:"proto,omitempty"` // tcp or udp
+	Backend string     `json:"backend,omitempty"`
+	Direct  bool       `json:"direct,omitempty"`
 }
 
 // Match reports whether the rule matches the provided tuple.

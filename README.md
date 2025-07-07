@@ -9,6 +9,9 @@ management API to update backends and forwarding rules at runtime.
 - Round-robin balancing across multiple TCP backends.
 - UDP forwarding to a single backend.
 - Management API to update backend list and five-tuple forwarding rules.
+- Automatic health checking of backends.
+- Rules can optionally bypass the proxy and connect directly to the original
+  destination.
 
 ## Building
 
@@ -49,7 +52,8 @@ The proxy starts an HTTP API (default `:9090`) with the following endpoints:
 {
   "rules": [
     { "src": "192.168.1.0/24", "dstPort": 8080,
-      "proto": "tcp", "backend": "10.0.0.1:9000" }
+      "proto": "tcp", "backend": "10.0.0.1:9000" },
+    { "dst": "10.1.1.0/24", "direct": true }
   ]
 }
 ```
