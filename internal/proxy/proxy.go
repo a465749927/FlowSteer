@@ -4,6 +4,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"strconv"
 	"sync/atomic"
 	"time"
 )
@@ -14,6 +15,54 @@ import (
 type backend struct {
 	addr  string
 	alive atomic.Bool
+}
+
+// connInfo describes a connection with its original five-tuple.
+type connInfo struct {
+	net.Conn
+	srcIP     net.IP
+	srcPort   int
+	dstIP     net.IP
+	dstPort   int
+	origDst   string
+	fromProxy bool
+}
+
+// parseConn extracts connection information and handles the PROXY protocol.
+func parseConn(c net.Conn) (*connInfo, error) {
+	conn, src, dst, err := parseProxyHeader(c)
+	if err != nil {
+		return nil, err
+	}
+
+	ci := &connInfo{Conn: conn}
+	if src != "" && dst != "" {
+		ci.fromProxy = true
+		if host, portStr, err := net.SplitHostPort(src); err == nil {
+			ci.srcIP = net.ParseIP(host)
+			p, _ := strconv.Atoi(portStr)
+			ci.srcPort = p
+		}
+		if host, portStr, err := net.SplitHostPort(dst); err == nil {
+			ci.dstIP = net.ParseIP(host)
+			p, _ := strconv.Atoi(portStr)
+			ci.dstPort = p
+			ci.origDst = dst
+		}
+		return ci, nil
+	}
+
+	raddr, rok := c.RemoteAddr().(*net.TCPAddr)
+	laddr, lok := c.LocalAddr().(*net.TCPAddr)
+	if rok {
+		ci.srcIP = raddr.IP
+		ci.srcPort = raddr.Port
+	}
+	if lok {
+		ci.dstIP = laddr.IP
+		ci.dstPort = laddr.Port
+	}
+	return ci, nil
 }
 
 // SimpleProxy forwards TCP connections to backend servers. The backend list and
@@ -89,18 +138,13 @@ func (p *SimpleProxy) nextBackend() *backend {
 	return bs[int(start)%len(bs)]
 }
 
-func (p *SimpleProxy) selectByRules(c net.Conn) (string, bool, bool) {
+func (p *SimpleProxy) selectByRules(srcIP net.IP, srcPort int, dstIP net.IP, dstPort int) (string, bool, bool) {
 	rules, _ := p.rules.Load().([]ForwardRule)
 	if len(rules) == 0 {
 		return "", false, false
 	}
-	laddr, lok := c.LocalAddr().(*net.TCPAddr)
-	raddr, rok := c.RemoteAddr().(*net.TCPAddr)
-	if !lok || !rok {
-		return "", false, false
-	}
 	for _, r := range rules {
-		if r.Match(raddr.IP, raddr.Port, laddr.IP, laddr.Port, "tcp") {
+		if r.Match(srcIP, srcPort, dstIP, dstPort, "tcp") {
 			return r.Backend, r.Direct, true
 		}
 	}
@@ -109,16 +153,23 @@ func (p *SimpleProxy) selectByRules(c net.Conn) (string, bool, bool) {
 
 // Handle starts a new goroutine to proxy the connection to a backend.
 func (p *SimpleProxy) Handle(client net.Conn) {
-	backendAddr, direct, ok := p.selectByRules(client)
+	ci, err := parseConn(client)
+	if err != nil {
+		log.Printf("failed to parse connection: %v", err)
+		client.Close()
+		return
+	}
+
+	backendAddr, direct, ok := p.selectByRules(ci.srcIP, ci.srcPort, ci.dstIP, ci.dstPort)
 	if direct {
-		p.directForward(client)
+		p.directForward(ci)
 		return
 	}
 	if !ok {
 		be := p.nextBackend()
 		if be == nil {
 			log.Printf("no backend available")
-			client.Close()
+			ci.Close()
 			return
 		}
 		backendAddr = be.addr
@@ -127,12 +178,20 @@ func (p *SimpleProxy) Handle(client net.Conn) {
 	backend, err := net.Dial("tcp", backendAddr)
 	if err != nil {
 		log.Printf("failed to connect to backend %s: %v", backendAddr, err)
-		client.Close()
+		ci.Close()
 		return
 	}
 
-	go proxyConn(client, backend)
-	go proxyConn(backend, client)
+	// propagate original tuple to next proxy
+	if err := sendProxyHeader(backend, ci.srcIP, ci.srcPort, ci.dstIP, ci.dstPort); err != nil {
+		log.Printf("failed to send proxy header: %v", err)
+		ci.Close()
+		backend.Close()
+		return
+	}
+
+	go proxyConn(ci, backend)
+	go proxyConn(backend, ci)
 }
 
 func proxyConn(src, dst net.Conn) {
@@ -146,26 +205,38 @@ func proxyConn(src, dst net.Conn) {
 // directForward forwards the connection to its original destination using
 // SO_ORIGINAL_DST. If the destination cannot be determined the connection is
 // closed.
-func (p *SimpleProxy) directForward(c net.Conn) {
-	tcp, ok := c.(*net.TCPConn)
-	if !ok {
-		c.Close()
-		return
+func (p *SimpleProxy) directForward(ci *connInfo) {
+	dst := ci.origDst
+	if dst == "" {
+		tcp, ok := ci.Conn.(*net.TCPConn)
+		if !ok {
+			ci.Close()
+			return
+		}
+		var err error
+		dst, err = originalDst(tcp)
+		if err != nil {
+			log.Printf("failed to get original dst: %v", err)
+			ci.Close()
+			return
+		}
 	}
-	dst, err := originalDst(tcp)
-	if err != nil {
-		log.Printf("failed to get original dst: %v", err)
-		c.Close()
-		return
-	}
+
 	backend, err := net.Dial("tcp", dst)
 	if err != nil {
 		log.Printf("failed to dial origin %s: %v", dst, err)
-		c.Close()
+		ci.Close()
 		return
 	}
-	go proxyConn(c, backend)
-	go proxyConn(backend, c)
+	// propagate tuple when direct-forwarding through another proxy
+	if err := sendProxyHeader(backend, ci.srcIP, ci.srcPort, ci.dstIP, ci.dstPort); err != nil {
+		log.Printf("failed to send proxy header: %v", err)
+		ci.Close()
+		backend.Close()
+		return
+	}
+	go proxyConn(ci, backend)
+	go proxyConn(backend, ci)
 }
 
 // healthLoop periodically checks backend reachability.

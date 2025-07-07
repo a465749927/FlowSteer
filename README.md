@@ -12,6 +12,8 @@ management API to update backends and forwarding rules at runtime.
 - Automatic health checking of backends.
 - Rules can optionally bypass the proxy and connect directly to the original
   destination.
+- Propagates original connection information between proxies using the PROXY
+  protocol.
 
 ## Building
 
