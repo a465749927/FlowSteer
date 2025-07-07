@@ -62,6 +62,20 @@ func parseConn(c net.Conn) (*connInfo, error) {
 		ci.dstIP = laddr.IP
 		ci.dstPort = laddr.Port
 	}
+	// attempt to get original destination when traffic arrives via TPROXY
+	if tcp, ok := c.(*net.TCPConn); ok {
+		if od, err := originalDst(tcp); err == nil {
+			host, portStr, _ := net.SplitHostPort(od)
+			if ci.dstIP == nil {
+				ci.dstIP = net.ParseIP(host)
+			}
+			if ci.dstPort == 0 {
+				p, _ := strconv.Atoi(portStr)
+				ci.dstPort = p
+			}
+			ci.origDst = od
+		}
+	}
 	return ci, nil
 }
 

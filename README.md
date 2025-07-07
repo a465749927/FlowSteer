@@ -14,6 +14,8 @@ management API to update backends and forwarding rules at runtime.
   destination.
 - Propagates original connection information between proxies using the PROXY
   protocol.
+- Works with iptables TPROXY redirection to capture the original destination
+  using `SO_ORIGINAL_DST`.
 
 ## Building
 

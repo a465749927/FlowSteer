@@ -1,12 +1,14 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"log"
 	"net"
 	"net/http"
 	"strings"
+	"syscall"
 
 	"github.com/example/flowsteer/internal/proxy"
 )
@@ -28,7 +30,17 @@ func main() {
 		}
 	}()
 
-	l, err := net.Listen("tcp", *listen)
+	lc := net.ListenConfig{Control: func(network, address string, c syscall.RawConn) error {
+		var serr error
+		if err := c.Control(func(fd uintptr) {
+			serr = syscall.SetsockoptInt(int(fd), syscall.SOL_IP, syscall.IP_TRANSPARENT, 1)
+		}); err != nil {
+			return err
+		}
+		return serr
+	}}
+
+	l, err := lc.Listen(context.Background(), "tcp", *listen)
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
