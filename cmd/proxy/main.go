@@ -7,25 +7,44 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"os"
 	"strings"
 	"syscall"
 
 	"github.com/example/flowsteer/internal/proxy"
 )
 
+type config struct {
+	Listen   string   `json:"listen"`
+	Backends []string `json:"backends"`
+	API      string   `json:"api"`
+}
+
 func main() {
+	cfgFile := flag.String("config", "", "configuration file in JSON format")
 	listen := flag.String("listen", ":8080", "listen address")
-	backends := flag.String("backends", "localhost:9000", "comma separated backend addresses")
+	backends := flag.String("backends", "", "comma separated backend addresses")
 	apiAddr := flag.String("api", ":9090", "management API address")
 	flag.Parse()
 
-	beList := splitAndTrim(*backends)
+	cfg := config{Listen: *listen, Backends: splitAndTrim(*backends), API: *apiAddr}
+	if *cfgFile != "" {
+		data, err := os.ReadFile(*cfgFile)
+		if err != nil {
+			log.Fatalf("failed to read config file: %v", err)
+		}
+		if err := json.Unmarshal(data, &cfg); err != nil {
+			log.Fatalf("invalid config file: %v", err)
+		}
+	}
+
+	beList := cfg.Backends
 
 	p := proxy.New(beList)
 
 	go func() {
-		log.Printf("management API listening on %s", *apiAddr)
-		if err := serveAPI(p, *apiAddr); err != nil {
+		log.Printf("management API listening on %s", cfg.API)
+		if err := serveAPI(p, cfg.API); err != nil {
 			log.Fatalf("api server error: %v", err)
 		}
 	}()
@@ -40,11 +59,11 @@ func main() {
 		return serr
 	}}
 
-	l, err := lc.Listen(context.Background(), "tcp", *listen)
+	l, err := lc.Listen(context.Background(), "tcp", cfg.Listen)
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
-	log.Printf("listening on %s, backends=%v", *listen, beList)
+	log.Printf("listening on %s, backends=%v", cfg.Listen, beList)
 
 	for {
 		conn, err := l.Accept()

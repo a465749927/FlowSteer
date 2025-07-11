@@ -159,7 +159,8 @@ func (p *SimpleProxy) selectByRules(srcIP net.IP, srcPort int, dstIP net.IP, dst
 	}
 	for _, r := range rules {
 		if r.Match(srcIP, srcPort, dstIP, dstPort, "tcp") {
-			return r.Backend, r.Direct, true
+			direct := r.Direct || r.Backend == ""
+			return r.Backend, direct, true
 		}
 	}
 	return "", false, false

@@ -4,7 +4,7 @@ This document describes how the proxy handles connections and how the main compo
 
 ## Startup
 
-- `cmd/proxy/main.go` parses command-line flags to obtain the listening address, the initial list of backends and the API address.
+- `cmd/proxy/main.go` parses command-line flags or an optional JSON config file to obtain the listening address, the initial list of backends and the API address.
 - A TCP listener is created with `IP_TRANSPARENT` enabled so the proxy can accept traffic redirected via iptables TPROXY.
 - The management API is started in a goroutine and exposes `/backends` and `/rules` for runtime configuration.
 
@@ -22,7 +22,7 @@ This document describes how the proxy handles connections and how the main compo
 ## Rule Evaluation
 
 - `selectByRules` scans the configured forwarding rules (`ForwardRule` in `rule.go`).
-- A rule can specify source/destination networks, ports and protocol; it may also indicate `Direct` forwarding which bypasses load balancing and connects to the original destination.
+- A rule can specify source/destination networks, ports and protocol. If a matching rule sets `Direct` or omits the `Backend` field the connection is forwarded directly to its original destination; otherwise the selected backend is used.
 
 ## Forwarding
 

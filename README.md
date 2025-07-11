@@ -18,6 +18,7 @@ See [docs/PROCESS.md](docs/PROCESS.md) for an overview of how the proxy processe
   protocol.
 - Works with iptables TPROXY redirection to capture the original destination
   using `SO_ORIGINAL_DST`.
+- Configuration can be loaded from a JSON file and backends are optional.
 
 ## Building
 
@@ -42,6 +43,29 @@ go run ./cmd/proxy -listen :5353 -backends 127.0.0.1:5354
 
 This will forward UDP packets received on port 5353 to the backend.
 
+Backends may be omitted entirely. In that case only rules that do not specify a
+backend (or specify `direct`) will cause traffic to be forwarded to the
+connection's original destination.
+
+### Configuration File
+
+Startup parameters can also be supplied in a JSON file using the `-config` flag.
+Fields mirror the command line options:
+
+```json
+{
+  "listen": ":8080",
+  "backends": ["10.0.0.1:9000", "10.0.0.2:9000"],
+  "api": ":9090"
+}
+```
+
+Launch with:
+
+```bash
+./proxy -config config.json
+```
+
 ## Management API
 
 The proxy starts an HTTP API (default `:9090`) with the following endpoints:
@@ -63,6 +87,9 @@ The proxy starts an HTTP API (default `:9090`) with the following endpoints:
   ]
 }
 ```
+
+A rule may omit the `backend` field to force the connection to be forwarded
+directly to its original destination.
 
 Existing connections are not affected when updating the configuration.
 
