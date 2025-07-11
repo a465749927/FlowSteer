@@ -93,3 +93,47 @@ directly to its original destination.
 
 Existing connections are not affected when updating the configuration.
 
+
+## Redirecting traffic with iptables TPROXY
+
+FlowSteer can operate as a transparent proxy by using iptables to intercept TCP or UDP traffic. Start the proxy normally (for example `sudo ./proxy -listen :8080` for TCP). Then configure the system to redirect connections:
+
+```bash
+# enable forwarding and load kernel modules
+sudo sysctl -w net.ipv4.ip_forward=1
+sudo modprobe xt_TPROXY nf_tproxy_ipv4
+
+# mark packets so they are routed back to the local machine
+sudo ip rule add fwmark 1 lookup 100
+sudo ip route add local 0.0.0.0/0 dev lo table 100
+
+# redirect TCP traffic to the proxy
+sudo iptables -t mangle -N FLOWSTEER
+sudo iptables -t mangle -A PREROUTING -p tcp -j FLOWSTEER
+sudo iptables -t mangle -A FLOWSTEER -p tcp -j TPROXY --on-port 8080 --tproxy-mark 1
+
+# redirect UDP (example for DNS)
+sudo iptables -t mangle -A FLOWSTEER -p udp --dport 53 -j TPROXY --on-port 5353 --tproxy-mark 1
+```
+
+With these rules any matching packets are transparently forwarded through FlowSteer while their original destination is preserved.
+
+## NAT Traversal Deployment
+
+Running FlowSteer on both sides of a NAT allows traffic to cross network boundaries without direct port forwarding. A typical layout looks like:
+
+```
+client -> Public FlowSteer <=====> FlowSteer inside LAN -> internal service
+```
+
+1. **Public instance**: start FlowSteer on a host with a public IP.
+   ```bash
+   ./proxy -listen :9000 -api :9090
+   ```
+2. **Internal instance**: start another FlowSteer behind the NAT and configure it to use the public instance as its backend.
+   ```bash
+   ./proxy -listen :8000 -backends public.ip.address:9000 -api :9091
+   ```
+   Use iptables TPROXY on the internal gateway to send selected traffic to the internal instance.
+3. Traffic arriving at the public proxy is forwarded to the internal instance using the PROXY protocol which carries the original five‑tuple. The internal proxy connects to the final destination on the private network, achieving a simple form of NAT traversal.
+
